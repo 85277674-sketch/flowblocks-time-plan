@@ -1,5 +1,11 @@
-const CACHE_NAME = "flowblocks-v1";
-const APP_SHELL = ["/", "/manifest.webmanifest", "/icons/icon.svg"];
+const CACHE_NAME = "flowblocks-v2";
+const APP_SHELL = [
+  "/",
+  "/offline.html",
+  "/manifest.webmanifest",
+  "/icons/icon.svg",
+  "/icons/apple-touch-icon.svg",
+];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -24,12 +30,37 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  if (event.request.mode === "navigate") {
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          const responseClone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put("/", responseClone));
+          return response;
+        })
+        .catch(() => caches.match("/").then((cached) => cached || caches.match("/offline.html"))),
+    );
+    return;
+  }
+
+  const requestUrl = new URL(event.request.url);
+  if (requestUrl.origin !== self.location.origin) {
+    return;
+  }
+
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
-      return (
-        cachedResponse ||
-        fetch(event.request).catch(() => caches.match("/"))
-      );
+      if (cachedResponse) {
+        return cachedResponse;
+      }
+
+      return fetch(event.request)
+        .then((response) => {
+          const responseClone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseClone));
+          return response;
+        })
+        .catch(() => caches.match("/offline.html"));
     }),
   );
 });
